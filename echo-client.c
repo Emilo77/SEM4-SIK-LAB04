@@ -6,14 +6,29 @@
 
 #include "err.h"
 #include "common.h"
+#include "time.h"
 
-#define BUFFER_SIZE 20
+#define BUFFER_SIZE 1000000
 
 char shared_buffer[BUFFER_SIZE];
 
+static char *rand_string(size_t size) {
+    char* str = malloc(sizeof(char)* size);
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK...";
+    if (size) {
+        --size;
+        for (size_t n = 0; n < size; n++) {
+            int key = rand() % (int) (sizeof charset - 1);
+            str[n] = charset[key];
+        }
+        str[size] = '\0';
+    }
+    return str;
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        fatal("Usage: %s host port message ...\n", argv[0]);
+	    fatal("Usage: %s <host> <port> <packages number> <data size> ...\n", argv[0]);
     }
 
     char *host = argv[1];
@@ -27,26 +42,22 @@ int main(int argc, char *argv[]) {
     char *server_ip = get_ip(&server_address);
     uint16_t server_port = get_port(&server_address);
 
-    for (int i = 3; i < argc; i++) {
-        size_t message_length = strnlen(argv[i], BUFFER_SIZE);
+    unsigned long packages_number = strtoul(argv[3], NULL, 10);
+    PRINT_ERRNO();
+    unsigned long data_size = strtoul(argv[4], NULL, 10);
+    PRINT_ERRNO();
+
+    for (int i = 0; i < (int) packages_number; i++) {
+		char *random_str = rand_string(data_size + 1);
+        size_t message_length = strnlen(random_str, BUFFER_SIZE);
         int flags = 0;
-        send_message(socket_fd, argv[i], message_length, flags);
-        printf("Sent %zd bytes to %s:%u: '%.*s'\n", message_length, server_ip, server_port, (int) message_length,
-               argv[i]);
+        send_message(socket_fd, random_str, message_length, flags);
+		free(random_str);
     }
+	printf("sent to %s:%u: %lu random_massages with %lu bytes\n", server_ip, server_port, packages_number, data_size);
 
     // Notify server that we're done sending messages
     CHECK_ERRNO(shutdown(socket_fd, SHUT_WR));
-
-    size_t received_length;
-    do {
-        memset(shared_buffer, 0, BUFFER_SIZE); // clean the buffer
-        size_t max_length = BUFFER_SIZE - 1; // leave space for the null terminator
-        int flags = 0;
-        received_length = receive_message(socket_fd, shared_buffer, max_length, flags);
-        printf("Received %zd bytes from %s:%u: '%s'\n", received_length, server_ip, server_port, shared_buffer);
-    } while (received_length > 0);
-
     CHECK_ERRNO(close(socket_fd));
 
     return 0;
